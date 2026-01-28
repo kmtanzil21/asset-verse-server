@@ -113,28 +113,64 @@ async function run() {
       }
     });
 
+    // app.get('/requests/approved', async (req, res) => {
+    //   const { hrEmail, status } = req.query;
 
-    app.patch('/requests/:id/approve', async(req,res)=>{
-      const {id}=req.params;
-      try{
-        const updatedRequest=await requestsCollection.updateOne(
-          {_id: new ObjectId(id)},
+    //   const query = { hrEmail };
+
+    //   // If status is provided in the query, add it to the filter
+    //   if (status) {
+    //     query.status = status;
+    //   }
+
+    //   try {
+    //     const requests = await requestsCollection.find(query).toArray();
+    //     res.send(requests);
+    //   } catch (error) {
+    //     console.log("Error fetching requests:", error);
+    //     res.status(500).send({ message: "Internal server error" });
+    //   }
+    // });
+
+
+    app.get('/requests/approved', async (req, res) => {
+  const { hrEmail, status } = req.query;
+  const query = { hrEmail, status: 'approved' };
+
+  try {
+    const requests = await requestsCollection.find(query).toArray(); // Apply the status filter
+    res.send(requests);
+  } catch (error) {
+    console.log("Error fetching approved requests:", error);
+    res.status(500).send({ message: "Internal server error" });
+  }
+});
+
+
+
+
+
+    app.patch('/requests/:id/approve', async (req, res) => {
+      const { id } = req.params;
+      try {
+        const updatedRequest = await requestsCollection.updateOne(
+          { _id: new ObjectId(id) },
           {
-            $set:{status:'approved'}
+            $set: { status: 'approved' }
           }
         )
 
-        if(updatedRequest.modifiedCount>0){
-          res.status(200).send({message:"Request Approved Successfully"});
+        if (updatedRequest.modifiedCount > 0) {
+          res.status(200).send({ message: "Request Approved Successfully" });
         }
-        else{
-          res.status(404).send({message:'Request not found'});
+        else {
+          res.status(404).send({ message: 'Request not found' });
         }
-    
+
       }
-      catch(error){
-        console.error("Error Updating Request",error);
-        res.status(500).send({message:"Internal Server Error"});
+      catch (error) {
+        console.error("Error Updating Request", error);
+        res.status(500).send({ message: "Internal Server Error" });
       }
     })
 
