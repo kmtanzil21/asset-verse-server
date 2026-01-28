@@ -146,6 +146,38 @@ async function run() {
   }
 });
 
+app.get('/hr/:hrEmail/approved-employees', async (req, res) => {
+  const { hrEmail } = req.params;
+
+  try {
+    const approvedRequests = await requestsCollection.find({ hrEmail, status: 'approved' }).toArray();
+    const uniqueEmails = [...new Set(approvedRequests.map(request => request.email))];
+    const employees = await usersCollection.find({ email: { $in: uniqueEmails } }).toArray();
+    const hrDetails = await usersCollection.findOne({ email: hrEmail });
+    if (!hrDetails) {
+      return res.status(404).send({ message: "HR not found" });
+    }
+    const companyName = hrDetails.companyName || "Unknown Company";  // Default to "Unknown Company" if not found
+    const employeesWithAssetNames = employees.map(employee => {
+      const employeeRequest = approvedRequests.find(req => req.email === employee.email);
+      const asset = employeeRequest ? employeeRequest.assetName : "Unknown Asset";  // Default to "Unknown Asset" if not found
+      return { ...employee, assetName: asset };
+    });
+
+    const response = {
+      companyName,
+      hrName: hrDetails.name,  // HR name
+      hrEmail: hrDetails.email,  // HR email
+      employees: employeesWithAssetNames
+    };
+    res.status(200).send(response);
+  } catch (error) {
+    console.error("Error fetching approved employees:", error);
+    res.status(500).send({ message: "Internal server error" });
+  }
+});
+
+
 
 
 
