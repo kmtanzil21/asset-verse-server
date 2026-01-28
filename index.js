@@ -178,6 +178,40 @@ app.get('/hr/:hrEmail/approved-employees', async (req, res) => {
 });
 
 
+ 
+
+// POST route for direct HR assignment
+app.post('/assign-asset-direct', async (req, res) => {
+    const assignment = req.body;
+    const { assetId } = assignment;
+
+    try {
+        // 1. Verify asset stock before assigning
+        const asset = await assetsCollection.findOne({ _id: new ObjectId(assetId) });
+        
+        if (!asset) {
+            return res.status(404).send({ message: "Asset not found" });
+        }
+        
+        if (parseInt(asset.productQuantity) <= 0) {
+            return res.status(400).send({ message: "Asset is out of stock" });
+        }
+
+        // 2. Insert the pre-approved request into the database
+        const result = await requestsCollection.insertOne(assignment);
+
+        // 3. Automatically decrement the asset quantity by 1
+        await assetsCollection.updateOne(
+            { _id: new ObjectId(assetId) },
+            { $inc: { productQuantity: -1 } }
+        );
+
+        res.status(201).send(result);
+    } catch (error) {
+        console.error("Error in direct assignment:", error);
+        res.status(500).send({ message: "Internal server error during assignment" });
+    }
+});
 
 
 
