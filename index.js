@@ -3,6 +3,8 @@ const cors = require('cors');
 const app = express();
 require('dotenv').config();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const stripe = require('stripe')(process.env.STRIPE_SECRET);
+
 const port = process.env.PORT || 3000;
 
 app.use(express.json());
@@ -63,6 +65,8 @@ async function run() {
       }
     });
 
+
+
     app.get('/users/role/:email', async (req, res) => {
       const email = req.params.email;
       try {
@@ -87,6 +91,13 @@ async function run() {
       const result = await assetsCollection.find(query).toArray();
       res.send(result);
     });
+
+    app.delete('/assets/:id', async(req,res)=>{
+      const id=req.params.id;
+      const query={_id: new ObjectId(id)};
+      const result= await assetsCollection.deleteOne(query);
+      res.send(result);
+    })
 
     app.get('/my-assets', async (req, res) => {
       const email = req.query.email;
@@ -134,67 +145,66 @@ async function run() {
 
 
     app.get('/requests/approved', async (req, res) => {
-  const { hrEmail, status } = req.query;
-  const query = { hrEmail, status: 'approved' };
+      const { hrEmail, status } = req.query;
+      const query = { hrEmail, status: 'approved' };
 
-  try {
-    const requests = await requestsCollection.find(query).toArray(); // Apply the status filter
-    res.send(requests);
-  } catch (error) {
-    console.log("Error fetching approved requests:", error);
-    res.status(500).send({ message: "Internal server error" });
-  }
-});
-
-app.get('/hr/:hrEmail/approved-employees', async (req, res) => {
-  const { hrEmail } = req.params;
-
-  try {
-    const approvedRequests = await requestsCollection.find({ hrEmail, status: 'approved' }).toArray();
-    const uniqueEmails = [...new Set(approvedRequests.map(request => request.email))];
-    const employees = await usersCollection.find({ email: { $in: uniqueEmails } }).toArray();
-    const hrDetails = await usersCollection.findOne({ email: hrEmail });
-    if (!hrDetails) {
-      return res.status(404).send({ message: "HR not found" });
-    }
-    const companyName = hrDetails.companyName || "Unknown Company";  // Default to "Unknown Company" if not found
-    const employeesWithAssetNames = employees.map(employee => {
-      const employeeRequest = approvedRequests.find(req => req.email === employee.email);
-      const asset = employeeRequest ? employeeRequest.assetName : "Unknown Asset";  // Default to "Unknown Asset" if not found
-      return { ...employee, assetName: asset };
+      try {
+        const requests = await requestsCollection.find(query).toArray(); // Apply the status filter
+        res.send(requests);
+      } catch (error) {
+        console.log("Error fetching approved requests:", error);
+        res.status(500).send({ message: "Internal server error" });
+      }
     });
 
-    const response = {
-      companyName,
-      hrName: hrDetails.name,  // HR name
-      hrEmail: hrDetails.email,  // HR email
-      employees: employeesWithAssetNames
-    };
-    res.status(200).send(response);
-  } catch (error) {
-    console.error("Error fetching approved employees:", error);
-    res.status(500).send({ message: "Internal server error" });
-  }
-});
+    app.get('/hr/:hrEmail/approved-employees', async (req, res) => {
+      const { hrEmail } = req.params;
+
+      try {
+        const approvedRequests = await requestsCollection.find({ hrEmail, status: 'approved' }).toArray();
+        const uniqueEmails = [...new Set(approvedRequests.map(request => request.email))];
+        const employees = await usersCollection.find({ email: { $in: uniqueEmails } }).toArray();
+        const hrDetails = await usersCollection.findOne({ email: hrEmail });
+        if (!hrDetails) {
+          return res.status(404).send({ message: "HR not found" });
+        }
+        const companyName = hrDetails.companyName || "Unknown Company";  // Default to "Unknown Company" if not found
+        const employeesWithAssetNames = employees.map(employee => {
+          const employeeRequest = approvedRequests.find(req => req.email === employee.email);
+          const asset = employeeRequest ? employeeRequest.assetName : "Unknown Asset";  // Default to "Unknown Asset" if not found
+          return { ...employee, assetName: asset };
+        });
+
+        const response = {
+          companyName,
+          hrName: hrDetails.name,  // HR name
+          hrEmail: hrDetails.email,  // HR email
+          employees: employeesWithAssetNames
+        };
+        res.status(200).send(response);
+      } catch (error) {
+        console.error("Error fetching approved employees:", error);
+        res.status(500).send({ message: "Internal server error" });
+      }
+    });
 
 
- 
 
-// POST route for direct HR assignment
-app.post('/assign-asset-direct', async (req, res) => {
-    const assignment = req.body;
-    const { assetId } = assignment;
+    // POST route for direct HR assignment
+    app.post('/assign-asset-direct', async (req, res) => {
+      const assignment = req.body;
+      const { assetId } = assignment;
 
-    try {
+      try {
         // 1. Verify asset stock before assigning
         const asset = await assetsCollection.findOne({ _id: new ObjectId(assetId) });
-        
+
         if (!asset) {
-            return res.status(404).send({ message: "Asset not found" });
+          return res.status(404).send({ message: "Asset not found" });
         }
-        
+
         if (parseInt(asset.productQuantity) <= 0) {
-            return res.status(400).send({ message: "Asset is out of stock" });
+          return res.status(400).send({ message: "Asset is out of stock" });
         }
 
         // 2. Insert the pre-approved request into the database
@@ -202,16 +212,20 @@ app.post('/assign-asset-direct', async (req, res) => {
 
         // 3. Automatically decrement the asset quantity by 1
         await assetsCollection.updateOne(
-            { _id: new ObjectId(assetId) },
-            { $inc: { productQuantity: -1 } }
+          { _id: new ObjectId(assetId) },
+          { $inc: { productQuantity: -1 } }
         );
 
         res.status(201).send(result);
-    } catch (error) {
+      } catch (error) {
         console.error("Error in direct assignment:", error);
         res.status(500).send({ message: "Internal server error during assignment" });
-    }
-});
+      }
+    });
+
+
+
+
 
 
 
@@ -241,38 +255,34 @@ app.post('/assign-asset-direct', async (req, res) => {
     })
 
 
-    app.post('/request-asset', async (req, res) => {
-      const { assetId, email, name, assetName } = req.body;
-      try {
-        const user = await usersCollection.findOne({ email });
-        if (!user) {
-          return res.status(404).send({ message: "User not found" });
-        }
+   app.post('/create-checkout-session', async (req, res) => {
+    const paymentInfo = req.body;
+    const amount = parseInt(paymentInfo.price) * 100;
 
-        const asset = await assetsCollection.findOne({ _id: new ObjectId(assetId) });
-        if (!asset) {
-          return res.status(404).send({ message: "Asset not found" });
-        }
-        const hrEmail = asset.hrEmail;
+    // Create the Stripe session
+    const session = await stripe.checkout.sessions.create({
+        line_items: [
+            {
+                price_data: {
+                    currency: 'USD',
+                    unit_amount: amount,
+                    product_data: {
+                        name: paymentInfo.name,
+                    },
+                },
+                quantity: 1,
+            },
+        ],
+        customer_email: paymentInfo.email,
+        mode: 'payment',
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`, // Correct URL
+        cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`, // Correct URL
+    });
 
-        const request = {
-          assetId,
-          name,
-          assetName,
-          email,
-          hrEmail,
-          status: 'pending',
-          requestedAt: new Date(),
+    console.log('Redirecting to:', `${process.env.SITE_DOMAIN}/dashboard/payment-success`); // Log for debugging
+    res.send({ url: session.url }); // Send the session URL to frontend
+});
 
-        };
-        const result = await requestsCollection.insertOne(request);
-        res.send(result);
-      }
-      catch (error) {
-        console.log("Error requesting asset:", error);
-        res.status(500).send({ message: "Internal server error" });
-      }
-    })
 
 
     app.patch('/approve-request/:requestId', async (req, res) => {
@@ -298,19 +308,51 @@ app.post('/assign-asset-direct', async (req, res) => {
       }
     })
 
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+
+app.post('/create-checkout-session', async (req, res) => {
+    const paymentInfo = req.body;
+    const amount = parseInt(paymentInfo.price) * 100; // Convert to cents
+
+    // Create the Stripe session
+    const session = await stripe.checkout.sessions.create({
+        line_items: [
+            {
+                price_data: {
+                    currency: 'USD',
+                    unit_amount: amount,
+                    product_data: {
+                        name: paymentInfo.name,
+                    },
+                },
+                quantity: 1,
+            },
+        ],
+        customer_email: paymentInfo.email,
+        mode: 'payment',
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`, // Use the correct environment variable for success URL
+        cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`, // Redirect on cancel
+    });
+
+    console.log(session);
+    res.send({ url: session.url }); // Send the session URL to frontend
+});
+
+
+
+
+      await client.db("admin").command({ ping: 1 });
+      console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    } finally {
+      // Ensures that the client will close when you finish/error
+      // await client.close();
+    }
   }
-}
 run().catch(console.dir);
 
-app.get('/', (req, res) => {
-  res.send('assetVerse is Running');
-});
+  app.get('/', (req, res) => {
+    res.send('assetVerse is Running');
+  });
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
-});
+  app.listen(port, () => {
+    console.log(`Example app listening on port ${port}`);
+  });
