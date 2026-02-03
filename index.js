@@ -178,6 +178,14 @@ async function run() {
       }
     });
 
+app.get('/my-hr', async (req, res) => {
+    // Extracting email from query: /my-hr?email=...
+    const email = req.query.email;
+    const query={email,status:'approved'};
+    const results=await requestsCollection.find(query).toArray();
+    res.send(results);
+   
+});
 
   app.get('/requests/employee', async (req, res) => {
   const { email } = req.query;
