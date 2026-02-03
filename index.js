@@ -35,17 +35,7 @@ async function run() {
       res.send(result);
     });
 
-    app.post('/users', async (req, res) => {
-      const user = req.body;
-      const query = { email: user.email };
-      const existingUser = await usersCollection.findOne(query);
-      if (existingUser) {
-        return res.send({ message: 'User already exists', insertedId: null });
-      }
-      const result = await usersCollection.insertOne(user);
-      res.send(result);
-    });
-
+   
     app.post('/assets', async (req, res) => {
       const asset = req.body;
       const email = asset.hrEmail;
@@ -66,6 +56,19 @@ async function run() {
     });
 
 
+     app.post('/users', async (req, res) => {
+      const user = req.body;
+      const query = { email: user.email };
+      const existingUser = await usersCollection.findOne(query);
+      if (existingUser) {
+        return res.send({ message: 'User already exists', insertedId: null });
+      }
+      const result = await usersCollection.insertOne(user);
+      res.send(result);
+    });
+
+
+
 
     app.get('/users/role/:email', async (req, res) => {
       const email = req.params.email;
@@ -80,6 +83,39 @@ async function run() {
         res.status(500).send({ message: "Error retrieving role" });
       }
     });
+
+    app.patch('/users/:id', async (req, res) => {
+    const id = req.params.id;
+    
+    // Check if the id is a valid ObjectId string
+    if (!ObjectId.isValid(id)) {
+        return res.status(400).send({ message: "Invalid user ID" });
+    }
+
+    const query = { _id: new ObjectId(id) };  // Create the ObjectId for the query
+    const updatedData = req.body; 
+    console.log(updatedData, query); // Use the data from the request body
+    const updatedDoc = {
+        $set: updatedData
+    };
+
+    
+
+    try {
+        const result = await usersCollection.updateOne(query, updatedDoc);
+        
+        // Check if the modification was successful
+        if (result.modifiedCount > 0) {
+            res.send({ message: "Profile updated successfully", modifiedCount: result.modifiedCount });
+        } else {
+            res.status(400).send({ message: "No changes were made to the profile" });
+        }
+    } catch (error) {
+        console.error("Error updating profile:", error);
+        res.status(500).send({ message: "Failed to update profile", error });
+    }
+});
+
 
 
     app.get('/all-assets', async (req, res) => {
@@ -99,8 +135,26 @@ async function run() {
       res.send(result);
     })
 
+  const { ObjectId } = require('mongodb');  // Ensure ObjectId is imported
+
+
+
+
+    app.patch('/assets/:id', async(req, res)=>{
+      const id=req.params.id;
+      const updatedData=req.body;
+      const query={_id: new ObjectId(id)};
+      const updatedDoc={
+        $set:updatedData,
+      };
+      const result= await assetsCollection.updateOne(query, updatedDoc);
+      res.send(result);
+
+    })
+
     app.get('/my-assets', async (req, res) => {
       const email = req.query.email;
+      console.log(email);
       if (!email) {
         return res.status(400).send({ message: "Email is required" });
       }
@@ -123,6 +177,20 @@ async function run() {
         res.status(500).send({ message: "Internal server error" });
       }
     });
+
+
+  app.get('/requests/employee', async (req, res) => {
+  const { email } = req.query;
+
+  if (!email) {
+    return res.status(400).send({ message: "Email required" });
+  }
+
+  const query = { email, status: 'approved' };
+  const requests = await requestsCollection.find(query).toArray();
+  res.send(requests);
+});
+
 
     // app.get('/requests/approved', async (req, res) => {
     //   const { hrEmail, status } = req.query;

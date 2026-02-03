@@ -8,12 +8,21 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "mongodb": "^7.0.0",
     "stripe": "^20.3.0"
-  }
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kmtanzil21/asset-verse-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kmtanzil21/asset-verse-server/issues"
+  },
+  "homepage": "https://github.com/kmtanzil21/asset-verse-server#readme",
+  "description": ""
 }
