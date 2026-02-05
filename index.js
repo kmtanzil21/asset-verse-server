@@ -22,7 +22,7 @@ app.use(cors());
 
 const verifyFBToken = async (req, res, next) => {
   const token = req.headers.authorization;
-  
+
   if (!token) {
     return res.status(401).send({ message: 'unauthorized access' });
   }
@@ -30,11 +30,11 @@ const verifyFBToken = async (req, res, next) => {
   try {
     const idToken = token.split(' ')[1];
     const decoded = await admin.auth().verifyIdToken(idToken);
-    
+
     // FIX: Extract email from the decoded object
     // Firebase stores the email in 'decoded.email'
-    req.decoded_email = decoded.email; 
-    
+    req.decoded_email = decoded.email;
+
     next();
   } catch (err) {
     console.error("Token Verification Error:", err);
@@ -60,12 +60,12 @@ async function run() {
     const usersCollection = db.collection('users');
     const requestsCollection = db.collection('requests');
 
-    const verifyAdmin=async(req, res,next)=>{
-      const email=req.decoded_email;
-      const query={email};
-      const user=await usersCollection.findOne(query);
-      if(!user||user.role!=='hr'){
-        return res.status(403).send({message: "Forbidden Access"});
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded_email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+      if (!user || user.role !== 'hr') {
+        return res.status(403).send({ message: "Forbidden Access" });
 
       }
       next();
@@ -77,8 +77,8 @@ async function run() {
       res.send(result);
     });
 
-   
-    app.post('/assets',verifyFBToken, async (req, res) => {
+
+    app.post('/assets', verifyFBToken, async (req, res) => {
       const asset = req.body;
       const email = asset.hrEmail;
       try {
@@ -98,7 +98,7 @@ async function run() {
     });
 
 
-     app.post('/users',verifyFBToken, async (req, res) => {
+    app.post('/users', verifyFBToken, async (req, res) => {
       const user = req.body;
       const query = { email: user.email };
       const existingUser = await usersCollection.findOne(query);
@@ -112,7 +112,7 @@ async function run() {
 
 
 
-    app.get('/users/role/:email',verifyFBToken, async (req, res) => {
+    app.get('/users/role/:email', verifyFBToken, async (req, res) => {
       const email = req.params.email;
       try {
         const user = await usersCollection.findOne({ email: email });
@@ -126,45 +126,45 @@ async function run() {
       }
     });
 
-    app.get('/users/:email/role', verifyFBToken,async(req,res)=>{
-      const email=req.params.email;
-      const query={email};
-      const user=await usersCollection.findOne(query);
-      res.send({role:user?.role|| 'user'})
+    app.get('/users/:email/role', verifyFBToken, async (req, res) => {
+      const email = req.params.email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+      res.send({ role: user?.role || 'user' })
 
     })
 
-    app.patch('/users/:id',verifyFBToken, async (req, res) => {
-    const id = req.params.id;
-    
-    // Check if the id is a valid ObjectId string
-    if (!ObjectId.isValid(id)) {
+    app.patch('/users/:id', verifyFBToken, async (req, res) => {
+      const id = req.params.id;
+
+      // Check if the id is a valid ObjectId string
+      if (!ObjectId.isValid(id)) {
         return res.status(400).send({ message: "Invalid user ID" });
-    }
+      }
 
-    const query = { _id: new ObjectId(id) };  // Create the ObjectId for the query
-    const updatedData = req.body; 
-    console.log(updatedData, query); // Use the data from the request body
-    const updatedDoc = {
+      const query = { _id: new ObjectId(id) };  // Create the ObjectId for the query
+      const updatedData = req.body;
+      console.log(updatedData, query); // Use the data from the request body
+      const updatedDoc = {
         $set: updatedData
-    };
+      };
 
-    
 
-    try {
+
+      try {
         const result = await usersCollection.updateOne(query, updatedDoc);
-        
+
         // Check if the modification was successful
         if (result.modifiedCount > 0) {
-            res.send({ message: "Profile updated successfully", modifiedCount: result.modifiedCount });
+          res.send({ message: "Profile updated successfully", modifiedCount: result.modifiedCount });
         } else {
-            res.status(400).send({ message: "No changes were made to the profile" });
+          res.status(400).send({ message: "No changes were made to the profile" });
         }
-    } catch (error) {
+      } catch (error) {
         console.error("Error updating profile:", error);
         res.status(500).send({ message: "Failed to update profile", error });
-    }
-});
+      }
+    });
 
 
 
@@ -178,31 +178,31 @@ async function run() {
       res.send(result);
     });
 
-    app.delete('/assets/:id',verifyFBToken, async(req,res)=>{
-      const id=req.params.id;
-      const query={_id: new ObjectId(id)};
-      const result= await assetsCollection.deleteOne(query);
+    app.delete('/assets/:id', verifyFBToken, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await assetsCollection.deleteOne(query);
       res.send(result);
     })
 
-  const { ObjectId } = require('mongodb');  // Ensure ObjectId is imported
+    const { ObjectId } = require('mongodb');  // Ensure ObjectId is imported
 
 
 
 
-    app.patch('/assets/:id',verifyFBToken, async(req, res)=>{
-      const id=req.params.id;
-      const updatedData=req.body;
-      const query={_id: new ObjectId(id)};
-      const updatedDoc={
-        $set:updatedData,
+    app.patch('/assets/:id', verifyFBToken, async (req, res) => {
+      const id = req.params.id;
+      const updatedData = req.body;
+      const query = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: updatedData,
       };
-      const result= await assetsCollection.updateOne(query, updatedDoc);
+      const result = await assetsCollection.updateOne(query, updatedDoc);
       res.send(result);
 
     })
 
-    app.get('/my-assets',verifyFBToken, async (req, res) => {
+    app.get('/my-assets', verifyFBToken, async (req, res) => {
       const email = req.query.email;
       console.log(email);
       if (!email) {
@@ -216,7 +216,7 @@ async function run() {
 
     //Request Related 
 
-    app.get('/requests',verifyFBToken, async (req, res) => {
+    app.get('/requests', verifyFBToken, async (req, res) => {
       const { hrEmail } = req.query;
 
       try {
@@ -228,32 +228,32 @@ async function run() {
       }
     });
 
-app.get('/my-hr',verifyFBToken, async (req, res) => {
-    const email = req.query.email;
-    const query={email,status:'approved'};
-    const results=await requestsCollection.find(query).toArray();
-    res.send(results);
-   
-});
+    app.get('/my-hr', verifyFBToken, async (req, res) => {
+      const email = req.query.email;
+      const query = { email, status: 'approved' };
+      const results = await requestsCollection.find(query).toArray();
+      res.send(results);
 
-app.get('/colleagues',verifyFBToken, async (req, res) => {
-  const hrEmail = req.query.email; 
-  const query = { hrEmail: hrEmail, status: 'approved' }; 
-  const results = await requestsCollection.find(query).toArray();
-  res.send(results);
-});
+    });
 
-  app.get('/requests/employee',verifyFBToken, async (req, res) => {
-  const { email } = req.query;
+    app.get('/colleagues', verifyFBToken, async (req, res) => {
+      const hrEmail = req.query.email;
+      const query = { hrEmail: hrEmail, status: 'approved' };
+      const results = await requestsCollection.find(query).toArray();
+      res.send(results);
+    });
 
-  if (!email) {
-    return res.status(400).send({ message: "Email required" });
-  }
+    app.get('/requests/employee', verifyFBToken, async (req, res) => {
+      const { email } = req.query;
 
-  const query = { email, status: 'approved' };
-  const requests = await requestsCollection.find(query).toArray();
-  res.send(requests);
-});
+      if (!email) {
+        return res.status(400).send({ message: "Email required" });
+      }
+
+      const query = { email, status: 'approved' };
+      const requests = await requestsCollection.find(query).toArray();
+      res.send(requests);
+    });
 
 
     // app.get('/requests/approved', async (req, res) => {
@@ -276,7 +276,7 @@ app.get('/colleagues',verifyFBToken, async (req, res) => {
     // });
 
 
-    app.get('/requests/approved',verifyFBToken, async (req, res) => {
+    app.get('/requests/approved', verifyFBToken, async (req, res) => {
       const { hrEmail, status } = req.query;
       const query = { hrEmail, status: 'approved' };
 
@@ -289,7 +289,7 @@ app.get('/colleagues',verifyFBToken, async (req, res) => {
       }
     });
 
-    app.get('/hr/:hrEmail/approved-employees',verifyFBToken, async (req, res) => {
+    app.get('/hr/:hrEmail/approved-employees', verifyFBToken, async (req, res) => {
       const { hrEmail } = req.params;
 
       try {
@@ -323,7 +323,7 @@ app.get('/colleagues',verifyFBToken, async (req, res) => {
 
 
     // POST route for direct HR assignment
-    app.post('/assign-asset-direct',verifyFBToken, async (req, res) => {
+    app.post('/assign-asset-direct', verifyFBToken, async (req, res) => {
       const assignment = req.body;
       const { assetId } = assignment;
 
@@ -360,52 +360,52 @@ app.get('/colleagues',verifyFBToken, async (req, res) => {
 
 
 
-app.post('/request-asset', verifyFBToken, async (req, res) => {
-  try {
-    const { assetId, email, name, assetName } = req.body;
+    app.post('/request-asset', verifyFBToken, async (req, res) => {
+      try {
+        const { assetId, email, name, assetName } = req.body;
 
-    // security: email must match token
-    if (email !== req.decoded_email) {
-      return res.status(403).send({ message: "forbidden access" });
-    }
+        // security: email must match token
+        if (email !== req.decoded_email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
 
-    if (!assetId || !email) {
-      return res.status(400).send({ message: "assetId and email are required" });
-    }
+        if (!assetId || !email) {
+          return res.status(400).send({ message: "assetId and email are required" });
+        }
 
-    const user = await usersCollection.findOne({ email });
-    if (!user) return res.status(404).send({ message: "User not found" });
+        const user = await usersCollection.findOne({ email });
+        if (!user) return res.status(404).send({ message: "User not found" });
 
-    const asset = await assetsCollection.findOne({ _id: new ObjectId(assetId) });
-    if (!asset) return res.status(404).send({ message: "Asset not found" });
+        const asset = await assetsCollection.findOne({ _id: new ObjectId(assetId) });
+        if (!asset) return res.status(404).send({ message: "Asset not found" });
 
-    // Optional stock check (you can remove if you want)
-    if (parseInt(asset.productQuantity) <= 0) {
-      return res.status(400).send({ message: "Asset is out of stock" });
-    }
+        // Optional stock check (you can remove if you want)
+        if (parseInt(asset.productQuantity) <= 0) {
+          return res.status(400).send({ message: "Asset is out of stock" });
+        }
 
-    const request = {
-      assetId,
-      email,
-      name: name || user.name || "",
-      assetName: assetName || asset.productName || "",
-      hrEmail: asset.hrEmail,
-      status: "pending",
-      requestedAt: new Date(),
-    };
+        const request = {
+          assetId,
+          email,
+          name: name || user.name || "",
+          assetName: assetName || asset.productName || "",
+          hrEmail: asset.hrEmail,
+          status: "pending",
+          requestedAt: new Date(),
+        };
 
-    const result = await requestsCollection.insertOne(request);
-    res.status(201).send(result);
-  } catch (error) {
-    console.log("Error requesting asset:", error);
-    res.status(500).send({ message: "Internal server error" });
-  }
-});
-
-
+        const result = await requestsCollection.insertOne(request);
+        res.status(201).send(result);
+      } catch (error) {
+        console.log("Error requesting asset:", error);
+        res.status(500).send({ message: "Internal server error" });
+      }
+    });
 
 
-    app.patch('/requests/:id/approve',verifyFBToken, async (req, res) => {
+
+
+    app.patch('/requests/:id/approve', verifyFBToken, async (req, res) => {
       const { id } = req.params;
       try {
         const updatedRequest = await requestsCollection.updateOne(
@@ -430,37 +430,53 @@ app.post('/request-asset', verifyFBToken, async (req, res) => {
     })
 
 
-   app.post('/create-checkout-session', async (req, res) => {
-    const paymentInfo = req.body;
-    const amount = parseInt(paymentInfo.price) * 100;
+    app.post('/create-checkout-session', async (req, res) => {
+      const paymentInfo = req.body;
+      const amount = parseInt(paymentInfo.price) * 100;
 
-    // Create the Stripe session
-    const session = await stripe.checkout.sessions.create({
+      const session = await stripe.checkout.sessions.create({
         line_items: [
-            {
-                price_data: {
-                    currency: 'USD',
-                    unit_amount: amount,
-                    product_data: {
-                        name: paymentInfo.name,
-                    },
-                },
-                quantity: 1,
+          {
+            price_data: {
+              currency: 'USD',
+              unit_amount: amount,
+              product_data: {
+                name: paymentInfo.name,
+              },
             },
+            quantity: 1,
+          },
         ],
+        metadata: {
+          packageId: paymentInfo.packageId,
+          userEmail: paymentInfo.email
+        },
         customer_email: paymentInfo.email,
         mode: 'payment',
-        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`, // Correct URL
-        cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`, // Correct URL
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+      });
+
+      res.send({ url: session.url });
     });
 
-    console.log('Redirecting to:', `${process.env.SITE_DOMAIN}/dashboard/payment-success`); // Log for debugging
-    res.send({ url: session.url }); // Send the session URL to frontend
-});
+    app.patch('/payment-success', async (req, res) => {
+      const sessionId = req.query.session_id;
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      console.log('session retrieve', session);
+
+      if (session.payment_status === 'paid') {
+        const id = session.metadata.packageId;
+      }
+
+      res.send({ success: true });
+    })
 
 
 
-    app.patch('/approve-request/:requestId',verifyFBToken, async (req, res) => {
+
+
+    app.patch('/approve-request/:requestId', verifyFBToken, async (req, res) => {
       const { requestId } = req.params;
       const { status } = req.body;
       if (status !== 'approved' && status !== 'denied') {
@@ -484,50 +500,50 @@ app.post('/request-asset', verifyFBToken, async (req, res) => {
     })
 
 
-// app.post('/create-checkout-session', async (req, res) => {
-//     const paymentInfo = req.body;
-//     const amount = parseInt(paymentInfo.price) * 100; // Convert to cents
+    // app.post('/create-checkout-session', async (req, res) => {
+    //     const paymentInfo = req.body;
+    //     const amount = parseInt(paymentInfo.price) * 100; // Convert to cents
 
-//     // Create the Stripe session
-//     const session = await stripe.checkout.sessions.create({
-//         line_items: [
-//             {
-//                 price_data: {
-//                     currency: 'USD',
-//                     unit_amount: amount,
-//                     product_data: {
-//                         name: paymentInfo.name,
-//                     },
-//                 },
-//                 quantity: 1,
-//             },
-//         ],
-//         customer_email: paymentInfo.email,
-//         mode: 'payment',
-//         success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`, // Use the correct environment variable for success URL
-//         cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`, // Redirect on cancel
-//     });
+    //     // Create the Stripe session
+    //     const session = await stripe.checkout.sessions.create({
+    //         line_items: [
+    //             {
+    //                 price_data: {
+    //                     currency: 'USD',
+    //                     unit_amount: amount,
+    //                     product_data: {
+    //                         name: paymentInfo.name,
+    //                     },
+    //                 },
+    //                 quantity: 1,
+    //             },
+    //         ],
+    //         customer_email: paymentInfo.email,
+    //         mode: 'payment',
+    //         success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`, // Use the correct environment variable for success URL
+    //         cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`, // Redirect on cancel
+    //     });
 
-//     console.log(session);
-//     res.send({ url: session.url }); // Send the session URL to frontend
-// });
-
-
+    //     console.log(session);
+    //     res.send({ url: session.url }); // Send the session URL to frontend
+    // });
 
 
-      await client.db("admin").command({ ping: 1 });
-      console.log("Pinged your deployment. You successfully connected to MongoDB!");
-    } finally {
-      // Ensures that the client will close when you finish/error
-      // await client.close();
-    }
+
+
+    await client.db("admin").command({ ping: 1 });
+    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+  } finally {
+    // Ensures that the client will close when you finish/error
+    // await client.close();
   }
+}
 run().catch(console.dir);
 
-  app.get('/', (req, res) => {
-    res.send('assetVerse is Running');
-  });
+app.get('/', (req, res) => {
+  res.send('assetVerse is Running');
+});
 
-  app.listen(port, () => {
-    console.log(`Example app listening on port ${port}`);
-  });
+app.listen(port, () => {
+  console.log(`Example app listening on port ${port}`);
+});
