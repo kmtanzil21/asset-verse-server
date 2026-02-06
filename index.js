@@ -59,6 +59,7 @@ async function run() {
     const packagesCollection = db.collection('packages');
     const usersCollection = db.collection('users');
     const requestsCollection = db.collection('requests');
+    const paymentsCollection = db.collection('payments');
 
     const verifyAdmin = async (req, res, next) => {
       const email = req.decoded_email;
@@ -449,7 +450,8 @@ async function run() {
         ],
         metadata: {
           packageId: paymentInfo.packageId,
-          userEmail: paymentInfo.email
+          userEmail: paymentInfo.email,
+          employeeLimit: paymentInfo.employeeLimit,
         },
         customer_email: paymentInfo.email,
         mode: 'payment',
@@ -461,18 +463,54 @@ async function run() {
     });
 
     app.patch('/payment-success', async (req, res) => {
-      const sessionId = req.query.session_id;
-      const session = await stripe.checkout.sessions.retrieve(sessionId);
-      console.log('session retrieve', session);
+      try {
+        const sessionId = req.query.session_id;
+        if (!sessionId) return res.status(400).send({ error: "No session ID" });
 
-      if (session.payment_status === 'paid') {
-        const id = session.metadata.packageId;
+        // 1. Check if this payment was ALREADY processed
+        // We use the sessionId (from Stripe) as a unique identifier
+        const existingPayment = await paymentsCollection.findOne({ sessionId: sessionId });
+
+        if (existingPayment) {
+          return res.send({ success: true, message: "Already processed", alreadyDone: true });
+        }
+
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+        if (session.payment_status === 'paid') {
+          const email = session.metadata.userEmail;
+          const newLimit = parseInt(session.metadata.employeeLimit);
+
+          // 2. Update User Limit
+          const query = { email: email };
+          const update = { $set: { employeeLimit: newLimit } };
+          const userUpdateResult = await usersCollection.updateOne(query, update);
+
+          // 3. Create Payment Record (Include the sessionId this time!)
+          const payment = {
+            sessionId: sessionId, // Important: Store this to prevent duplicates!
+            amount: session.amount_total / 100,
+            currency: session.currency,
+            customerEmail: email,
+            packageID: session.metadata.packageId,
+            paidAt: new Date()
+          };
+
+          const paymentInsertResult = await paymentsCollection.insertOne(payment);
+
+          return res.send({
+            success: true,
+            userUpdateResult,
+            paymentInsertResult
+          });
+        }
+
+        res.status(400).send({ success: false, message: "Payment not verified" });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ error: error.message });
       }
-
-      res.send({ success: true });
-    })
-
-
+    });
 
 
 
