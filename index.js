@@ -538,6 +538,25 @@ async function run() {
     })
 
 
+    app.get('/payment-history/:email', async (req, res) => {
+      const email = req.params.email;
+
+      const result = await paymentsCollection.aggregate([
+        { $match: { customerEmail: email } }, 
+        { $sort: { paidAt: -1 } },           
+        {
+          $group: {
+            _id: "$packageID",                
+            latestPayment: { $first: "$$ROOT" } 
+          }
+        },
+        { $replaceRoot: { newRoot: "$latestPayment" } } 
+      ]).toArray();
+
+      res.send(result);
+    });
+
+
     // app.post('/create-checkout-session', async (req, res) => {
     //     const paymentInfo = req.body;
     //     const amount = parseInt(paymentInfo.price) * 100; // Convert to cents
