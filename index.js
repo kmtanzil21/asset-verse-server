@@ -60,6 +60,7 @@ async function run() {
     const usersCollection = db.collection('users');
     const requestsCollection = db.collection('requests');
     const paymentsCollection = db.collection('payments');
+    const employeeCollection = db.collection('employee');
 
     const verifyAdmin = async (req, res, next) => {
       const email = req.decoded_email;
@@ -323,6 +324,8 @@ async function run() {
 
 
 
+
+
     // POST route for direct HR assignment
     app.post('/assign-asset-direct', verifyFBToken, async (req, res) => {
       const assignment = req.body;
@@ -408,27 +411,52 @@ async function run() {
 
     app.patch('/requests/:id/approve', verifyFBToken, async (req, res) => {
       const { id } = req.params;
+
       try {
-        const updatedRequest = await requestsCollection.updateOne(
+        const updateResult = await requestsCollection.updateOne(
           { _id: new ObjectId(id) },
-          {
-            $set: { status: 'approved' }
-          }
-        )
+          { $set: { status: 'approved', approvedAt: new Date().toISOString() } }
+        );
 
-        if (updatedRequest.modifiedCount > 0) {
-          res.status(200).send({ message: "Request Approved Successfully" });
+        if (updateResult.matchedCount === 0) {
+          return res.status(404).send({ message: 'Request not found' });
         }
-        else {
-          res.status(404).send({ message: 'Request not found' });
+        const requestData = await requestsCollection.findOne({ _id: new ObjectId(id) });
+        const existingEmployee = await employeeCollection.findOne({ email: requestData.email });
+
+        if (!existingEmployee) {
+          await employeeCollection.insertOne({
+            name: requestData.name,
+            email: requestData.email,
+            hrEmail: requestData.hrEmail,
+            addedAt: new Date().toISOString()
+          });
         }
 
-      }
-      catch (error) {
-        console.error("Error Updating Request", error);
+        res.status(200).send({
+          message: "Request Approved and Employee Synchronized",
+          modifiedCount: updateResult.modifiedCount
+        });
+
+      } catch (error) {
+        console.error("Error Approving Request:", error);
         res.status(500).send({ message: "Internal Server Error" });
       }
-    })
+    });
+
+    app.get('/employee/:email', verifyFBToken, async (req, res) => {
+      const hrEmail = req.params.email;
+      const result = await employeeCollection.find({ hrEmail: hrEmail }).toArray();
+      res.send(result);
+    });
+
+    app.delete('/employee-delete/:email', verifyFBToken, async (req, res) => {
+      const hrEmail = req.query.hrEmail;
+      const email = req.params.email;
+      const query = { hrEmail: hrEmail, email: email };
+      const result = await employeeCollection.deleteOne(query);
+      res.send(result);
+    });
 
 
     app.post('/create-checkout-session', async (req, res) => {
@@ -542,15 +570,15 @@ async function run() {
       const email = req.params.email;
 
       const result = await paymentsCollection.aggregate([
-        { $match: { customerEmail: email } }, 
-        { $sort: { paidAt: -1 } },           
+        { $match: { customerEmail: email } },
+        { $sort: { paidAt: -1 } },
         {
           $group: {
-            _id: "$packageID",                
-            latestPayment: { $first: "$$ROOT" } 
+            _id: "$packageID",
+            latestPayment: { $first: "$$ROOT" }
           }
         },
-        { $replaceRoot: { newRoot: "$latestPayment" } } 
+        { $replaceRoot: { newRoot: "$latestPayment" } }
       ]).toArray();
 
       res.send(result);
