@@ -171,14 +171,33 @@ async function run() {
 
 
     app.get('/all-assets', async (req, res) => {
-      const { search } = req.query;
-      let query = {};
-      if (search) {
+    const { search, page = 1, limit = 10 } = req.query; // Default to page 1, limit 10
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    let query = {};
+    if (search) {
         query.productName = { $regex: search, $options: 'i' };
-      }
-      const result = await assetsCollection.find(query).toArray();
-      res.send(result);
-    });
+    }
+
+    try {
+        // 1. Get the paginated data
+        const assets = await assetsCollection.find(query)
+            .skip(skip)
+            .limit(parseInt(limit))
+            .toArray();
+
+        // 2. Get total count for pagination controls
+        const totalCount = await assetsCollection.countDocuments(query);
+
+        res.send({
+            assets,
+            totalCount,
+            totalPages: Math.ceil(totalCount / parseInt(limit))
+        });
+    } catch (error) {
+        res.status(500).send({ message: "Error fetching assets" });
+    }
+});
 
     app.delete('/assets/:id', verifyFBToken, async (req, res) => {
       const id = req.params.id;
@@ -359,6 +378,8 @@ async function run() {
       }
     });
 
+    
+
 
 
 
@@ -408,41 +429,89 @@ async function run() {
 
 
 
-
     app.patch('/requests/:id/approve', verifyFBToken, async (req, res) => {
-      const { id } = req.params;
+  const { id } = req.params;
 
-      try {
-        const updateResult = await requestsCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $set: { status: 'approved', approvedAt: new Date().toISOString() } }
-        );
+  try {
+    // 1. Update the request status to 'approved'
+    const updateResult = await requestsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status: 'approved', approvedAt: new Date().toISOString() } }
+    );
 
-        if (updateResult.matchedCount === 0) {
-          return res.status(404).send({ message: 'Request not found' });
-        }
-        const requestData = await requestsCollection.findOne({ _id: new ObjectId(id) });
-        const existingEmployee = await employeeCollection.findOne({ email: requestData.email });
+    if (updateResult.matchedCount === 0) {
+      return res.status(404).send({ message: 'Request not found' });
+    }
 
-        if (!existingEmployee) {
-          await employeeCollection.insertOne({
-            name: requestData.name,
-            email: requestData.email,
-            hrEmail: requestData.hrEmail,
-            addedAt: new Date().toISOString()
-          });
-        }
+    // 2. Fetch the full request details to get assetId and employee info
+    const requestData = await requestsCollection.findOne({ _id: new ObjectId(id) });
 
-        res.status(200).send({
-          message: "Request Approved and Employee Synchronized",
-          modifiedCount: updateResult.modifiedCount
-        });
+    // 3. REDUCE ASSET QUANTITY BY 1
+    // We use $inc with -1 to decrement the quantity
+    const assetUpdate = await assetsCollection.updateOne(
+      { _id: new ObjectId(requestData.assetId) },
+      { $inc: { productQuantity: -1 } }
+    );
 
-      } catch (error) {
-        console.error("Error Approving Request:", error);
-        res.status(500).send({ message: "Internal Server Error" });
-      }
+    // 4. Synchronize Employee Collection
+    const existingEmployee = await employeeCollection.findOne({ email: requestData.email });
+
+    if (!existingEmployee) {
+      await employeeCollection.insertOne({
+        name: requestData.name,
+        email: requestData.email,
+        hrEmail: requestData.hrEmail,
+        addedAt: new Date().toISOString()
+      });
+    }
+
+    res.status(200).send({
+      message: "Request Approved, Quantity Reduced, and Employee Synchronized",
+      modifiedCount: updateResult.modifiedCount,
+      assetUpdated: assetUpdate.modifiedCount > 0
     });
+
+  } catch (error) {
+    console.error("Error Approving Request:", error);
+    res.status(500).send({ message: "Internal Server Error" });
+  }
+});
+
+
+    // app.patch('/requests/:id/approve', verifyFBToken, async (req, res) => {
+    //   const { id } = req.params;
+
+    //   try {
+    //     const updateResult = await requestsCollection.updateOne(
+    //       { _id: new ObjectId(id) },
+    //       { $set: { status: 'approved', approvedAt: new Date().toISOString() } }
+    //     );
+
+    //     if (updateResult.matchedCount === 0) {
+    //       return res.status(404).send({ message: 'Request not found' });
+    //     }
+    //     const requestData = await requestsCollection.findOne({ _id: new ObjectId(id) });
+    //     const existingEmployee = await employeeCollection.findOne({ email: requestData.email });
+
+    //     if (!existingEmployee) {
+    //       await employeeCollection.insertOne({
+    //         name: requestData.name,
+    //         email: requestData.email,
+    //         hrEmail: requestData.hrEmail,
+    //         addedAt: new Date().toISOString()
+    //       });
+    //     }
+
+    //     res.status(200).send({
+    //       message: "Request Approved and Employee Synchronized",
+    //       modifiedCount: updateResult.modifiedCount
+    //     });
+
+    //   } catch (error) {
+    //     console.error("Error Approving Request:", error);
+    //     res.status(500).send({ message: "Internal Server Error" });
+    //   }
+    // });
 
     app.get('/employee/:email', verifyFBToken, async (req, res) => {
       const hrEmail = req.params.email;
