@@ -632,6 +632,44 @@ async function run() {
 
 
 
+app.get('/asset-distribution', verifyFBToken, async (req, res) => {
+      const hrEmail = req.query.email;
+      const decodedEmail = req.decoded_email;
+
+      // Identity & Role Check
+      if (hrEmail !== decodedEmail) return res.status(403).send({ message: "Forbidden" });
+      const user = await usersCollection.findOne({ email: hrEmail });
+      if (!user || user.role !== 'hr') return res.status(403).send({ message: "HR Access Required" });
+
+      const result = await assetsCollection.aggregate([
+        { $match: { hrEmail: hrEmail } },
+        { $group: { _id: "$productType", value: { $sum: 1 } } },
+        { $project: { name: "$_id", value: 1, _id: 0 } }
+      ]).toArray();
+      res.send(result);
+    });
+
+    // 2. Bar Chart: Top 5 most requested assets
+    app.get('/top-requests', verifyFBToken, async (req, res) => {
+      const hrEmail = req.query.email;
+      const decodedEmail = req.decoded_email;
+
+      if (hrEmail !== decodedEmail) return res.status(403).send({ message: "Forbidden" });
+      const user = await usersCollection.findOne({ email: hrEmail });
+      if (!user || user.role !== 'hr') return res.status(403).send({ message: "HR Access Required" });
+
+      const result = await requestsCollection.aggregate([
+        { $match: { hrEmail: hrEmail } },
+        { $group: { _id: "$assetName", count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+        { $project: { name: "$_id", count: 1, _id: 0 } }
+      ]).toArray();
+      res.send(result);
+    });
+
+
+
 
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
