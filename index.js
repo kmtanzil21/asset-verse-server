@@ -614,6 +614,23 @@ async function run() {
     // });
 
 
+    app.patch('/update-profile', verifyFBToken, async (req, res) => {
+    const userEmail = req.decoded_email; // From your middleware
+    const updatedData = req.body;
+
+    // Remove email from body if present to keep it read-only
+    delete updatedData.email;
+
+    const query = { email: userEmail };
+    const updatedDoc = {
+        $set: updatedData
+    };
+
+    const result = await usersCollection.updateOne(query, updatedDoc);
+    res.send(result);
+});
+
+
 
 
     await client.db("admin").command({ ping: 1 });
