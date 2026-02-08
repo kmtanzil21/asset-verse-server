@@ -579,14 +579,53 @@ async function run() {
       res.send(result);
     });
 
-    app.delete('/employee-delete/:email', verifyFBToken, async (req, res) => {
-      const hrEmail = req.query.hrEmail;
-      const email = req.params.email;
-      const query = { hrEmail: hrEmail, email: email };
-      const result = await employeeCollection.deleteOne(query);
-      res.send(result);
-    });
+    // app.delete('/employee-delete/:email', verifyFBToken, async (req, res) => {
+    //   const hrEmail = req.query.hrEmail;
+    //   const email = req.params.email;
+    //   const query = { hrEmail: hrEmail, email: email };
+    //   const result = await employeeCollection.deleteOne(query);
+    //   res.send(result);
+    // });
 
+
+    app.delete('/employee-delete/:email', verifyFBToken, async (req, res) => {
+    const hrEmail = req.query.hrEmail;
+    const email = req.params.email;
+
+    try {
+        // 1. Find all 'approved' requests for this employee to identify assets to return
+        // This ensures only assets currently held by the employee are added back to stock
+        const approvedRequests = await requestsCollection.find({ 
+            email: email, 
+            hrEmail: hrEmail, 
+            status: 'approved' 
+        }).toArray();
+
+        // 2. Increase product quantity for each approved asset being returned
+        // We iterate through the approved requests and use $inc to add 1 to the stock
+        for (const request of approvedRequests) {
+            await assetsCollection.updateOne(
+                { _id: new ObjectId(request.assetId) },
+                { $inc: { productQuantity: 1 } }
+            );
+        }
+
+        // 3. Update the status of ALL requests (pending or approved) for this employee to 'rejected'
+        await requestsCollection.updateMany(
+            { email: email, hrEmail: hrEmail },
+            { $set: { status: 'rejected' } }
+        );
+
+        // 4. Finally, delete the employee from the company's employee list
+        const query = { hrEmail: hrEmail, email: email };
+        const result = await employeeCollection.deleteOne(query);
+        
+        res.send(result);
+    } catch (error) {
+        console.error("Error removing employee and returning assets:", error);
+        res.status(500).send({ message: "Internal Server Error" });
+    }
+});
 
     app.post('/create-checkout-session', async (req, res) => {
       const paymentInfo = req.body;
