@@ -171,33 +171,33 @@ async function run() {
 
 
     app.get('/all-assets', async (req, res) => {
-    const { search, page = 1, limit = 10 } = req.query; // Default to page 1, limit 10
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    
-    let query = {};
-    if (search) {
-        query.productName = { $regex: search, $options: 'i' };
-    }
+      const { search, page = 1, limit = 10 } = req.query; // Default to page 1, limit 10
+      const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    try {
+      let query = {};
+      if (search) {
+        query.productName = { $regex: search, $options: 'i' };
+      }
+
+      try {
         // 1. Get the paginated data
         const assets = await assetsCollection.find(query)
-            .skip(skip)
-            .limit(parseInt(limit))
-            .toArray();
+          .skip(skip)
+          .limit(parseInt(limit))
+          .toArray();
 
         // 2. Get total count for pagination controls
         const totalCount = await assetsCollection.countDocuments(query);
 
         res.send({
-            assets,
-            totalCount,
-            totalPages: Math.ceil(totalCount / parseInt(limit))
+          assets,
+          totalCount,
+          totalPages: Math.ceil(totalCount / parseInt(limit))
         });
-    } catch (error) {
+      } catch (error) {
         res.status(500).send({ message: "Error fetching assets" });
-    }
-});
+      }
+    });
 
     app.delete('/assets/:id', verifyFBToken, async (req, res) => {
       const id = req.params.id;
@@ -378,7 +378,7 @@ async function run() {
       }
     });
 
-    
+
 
 
 
@@ -428,54 +428,114 @@ async function run() {
     });
 
 
-
     app.patch('/requests/:id/approve', verifyFBToken, async (req, res) => {
-  const { id } = req.params;
+      const { id } = req.params;
 
-  try {
-    // 1. Update the request status to 'approved'
-    const updateResult = await requestsCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { status: 'approved', approvedAt: new Date().toISOString() } }
-    );
+      try {
+        // 1. Fetch request details first to get HR and Employee info
+        const requestData = await requestsCollection.findOne({ _id: new ObjectId(id) });
+        if (!requestData) {
+          return res.status(404).send({ message: 'Request not found' });
+        }
 
-    if (updateResult.matchedCount === 0) {
-      return res.status(404).send({ message: 'Request not found' });
-    }
+        // 2. Check if the employee is already in the company
+        const existingEmployee = await employeeCollection.findOne({ email: requestData.email });
 
-    // 2. Fetch the full request details to get assetId and employee info
-    const requestData = await requestsCollection.findOne({ _id: new ObjectId(id) });
+        // 3. LIMIT CHECK: Only if the employee is NEW to the company
+        if (!existingEmployee) {
+          // Fetch HR data to get their package limit
+          const hr = await usersCollection.findOne({ email: requestData.hrEmail });
 
-    // 3. REDUCE ASSET QUANTITY BY 1
-    // We use $inc with -1 to decrement the quantity
-    const assetUpdate = await assetsCollection.updateOne(
-      { _id: new ObjectId(requestData.assetId) },
-      { $inc: { productQuantity: -1 } }
-    );
+          // Count current employees assigned to this HR
+          const currentEmployeeCount = await employeeCollection.countDocuments({
+            hrEmail: requestData.hrEmail
+          });
 
-    // 4. Synchronize Employee Collection
-    const existingEmployee = await employeeCollection.findOne({ email: requestData.email });
+          // If limit is reached, block the approval
+          if (currentEmployeeCount >= hr.packageLimit) {
+            return res.status(403).send({
+              message: "Employee limit reached. Please upgrade your package to add more members."
+            });
+          }
 
-    if (!existingEmployee) {
-      await employeeCollection.insertOne({
-        name: requestData.name,
-        email: requestData.email,
-        hrEmail: requestData.hrEmail,
-        addedAt: new Date().toISOString()
-      });
-    }
+          // If within limit, add the employee to the collection
+          await employeeCollection.insertOne({
+            name: requestData.name,
+            email: requestData.email,
+            hrEmail: requestData.hrEmail,
+            addedAt: new Date().toISOString()
+          });
+        }
 
-    res.status(200).send({
-      message: "Request Approved, Quantity Reduced, and Employee Synchronized",
-      modifiedCount: updateResult.modifiedCount,
-      assetUpdated: assetUpdate.modifiedCount > 0
+        // 4. Proceed with Approval (Update Request Status)
+        const updateResult = await requestsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status: 'approved', approvedAt: new Date().toISOString() } }
+        );
+
+        // 5. Reduce Asset Inventory by 1
+        await assetsCollection.updateOne(
+          { _id: new ObjectId(requestData.assetId) },
+          { $inc: { productQuantity: -1 } }
+        );
+
+        res.status(200).send({
+          message: "Request approved and inventory updated.",
+          modifiedCount: updateResult.modifiedCount
+        });
+
+      } catch (error) {
+        console.error("Error Approving Request:", error);
+        res.status(500).send({ message: "Internal Server Error" });
+      }
     });
+    //     app.patch('/requests/:id/approve', verifyFBToken, async (req, res) => {
+    //   const { id } = req.params;
 
-  } catch (error) {
-    console.error("Error Approving Request:", error);
-    res.status(500).send({ message: "Internal Server Error" });
-  }
-});
+    //   try {
+    //     // 1. Update the request status to 'approved'
+    //     const updateResult = await requestsCollection.updateOne(
+    //       { _id: new ObjectId(id) },
+    //       { $set: { status: 'approved', approvedAt: new Date().toISOString() } }
+    //     );
+
+    //     if (updateResult.matchedCount === 0) {
+    //       return res.status(404).send({ message: 'Request not found' });
+    //     }
+
+    //     // 2. Fetch the full request details to get assetId and employee info
+    //     const requestData = await requestsCollection.findOne({ _id: new ObjectId(id) });
+
+    //     // 3. REDUCE ASSET QUANTITY BY 1
+    //     // We use $inc with -1 to decrement the quantity
+    //     const assetUpdate = await assetsCollection.updateOne(
+    //       { _id: new ObjectId(requestData.assetId) },
+    //       { $inc: { productQuantity: -1 } }
+    //     );
+
+    //     // 4. Synchronize Employee Collection
+    //     const existingEmployee = await employeeCollection.findOne({ email: requestData.email });
+
+    //     if (!existingEmployee) {
+    //       await employeeCollection.insertOne({
+    //         name: requestData.name,
+    //         email: requestData.email,
+    //         hrEmail: requestData.hrEmail,
+    //         addedAt: new Date().toISOString()
+    //       });
+    //     }
+
+    //     res.status(200).send({
+    //       message: "Request Approved, Quantity Reduced, and Employee Synchronized",
+    //       modifiedCount: updateResult.modifiedCount,
+    //       assetUpdated: assetUpdate.modifiedCount > 0
+    //     });
+
+    //   } catch (error) {
+    //     console.error("Error Approving Request:", error);
+    //     res.status(500).send({ message: "Internal Server Error" });
+    //   }
+    // });
 
 
     // app.patch('/requests/:id/approve', verifyFBToken, async (req, res) => {
@@ -684,24 +744,24 @@ async function run() {
 
 
     app.patch('/update-profile', verifyFBToken, async (req, res) => {
-    const userEmail = req.decoded_email; // From your middleware
-    const updatedData = req.body;
+      const userEmail = req.decoded_email; // From your middleware
+      const updatedData = req.body;
 
-    // Remove email from body if present to keep it read-only
-    delete updatedData.email;
+      // Remove email from body if present to keep it read-only
+      delete updatedData.email;
 
-    const query = { email: userEmail };
-    const updatedDoc = {
+      const query = { email: userEmail };
+      const updatedDoc = {
         $set: updatedData
-    };
+      };
 
-    const result = await usersCollection.updateOne(query, updatedDoc);
-    res.send(result);
-});
+      const result = await usersCollection.updateOne(query, updatedDoc);
+      res.send(result);
+    });
 
 
 
-app.get('/asset-distribution', verifyFBToken, async (req, res) => {
+    app.get('/asset-distribution', verifyFBToken, async (req, res) => {
       const hrEmail = req.query.email;
       const decodedEmail = req.decoded_email;
 
